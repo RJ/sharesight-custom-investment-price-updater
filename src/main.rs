@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::env;
 use std::option::Option;
 use std::process;
-use std::error::Error;
 
 use reqwest::blocking::Client;
 use reqwest::header;
@@ -28,10 +27,10 @@ struct State {
 #[derive(Debug, Deserialize)]
 struct AuthResponse {
     access_token: String,
-    token_type: String,
-    expires_in: i32,
-    scope: String,
-    created_at: i32,
+    // token_type: String,
+    // expires_in: i32,
+    // scope: String,
+    // created_at: i32,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -60,7 +59,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .get_matches()
         ;
 
-    println!("{:?}", args);
+    // println!("{:?}", args);
 
     let mut creds = State {
         client_id: env::var("CLIENT_ID").expect("Missing 'CLIENT_ID' env var"),
@@ -75,7 +74,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     match args.subcommand() {
-        Some(("list", sub_m)) => {
+        Some(("list", _sub_m)) => {
             let custom_investments = get_custom_investments(&creds);
             // println!("id\tcode\tname");
             for ci in custom_investments {
@@ -84,33 +83,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(())
         },
         Some(("update", sub_m)) => {
-            println!("sub_m = {:?}", sub_m);
             // use ID lets us know the user supplied the internal sharesight custom investment id themselves
             let investment_id: u32 = if sub_m.is_present("use-id") {
                 sub_m.value_of("investment").unwrap().parse::<u32>().unwrap()
             } else {
-                if Some(id) = find_custom_investment_id(sub_m.value_of(&creds, "investment")) {
-                    id
-                } else {
-                    // Err("Can't find investment id for: '{}'", sub_m.value_of("investment"))
-                    0
-                }
+                find_custom_investment_id(&creds, sub_m.value_of("investment").unwrap())
+                    .expect("Can't find investment id for this code")
             };
-            println!("inv {:?}", investment_id);
 
-            // let (date, price) = get_vanguard_global_small_cap_index_fund_price();
-            // let custom_investments = get_custom_investments(&creds);
-            // assert_eq!(1, custom_investments.len());
-        
-            // let ci = &custom_investments[0];
-            // if add_custom_investment_price(&creds, ci, price.into(), date) {
-            //     println!("Success");
-            //     Ok(())
-            // } else {
-            //     eprintln!("Failed to put custom price");
-            //     Err("Fail".into())
-            // }
-            Ok(())
+            // verify date format
+            let date_str = sub_m.value_of("date").unwrap();
+            if NaiveDate::parse_from_str(date_str, "%Y-%m-%d").is_err() {
+                panic!("Invalid date format, expecting YYYY-MM-DD, got '{}'", date_str);
+            }
+
+            let price = sub_m.value_of("price").unwrap().parse::<f64>()
+                                .expect("Invalid price format, expecting float");
+            
+            println!("add_custom_investment_price {} {} {}", investment_id, date_str, price);
+
+            if add_custom_investment_price(&creds, investment_id, price, date_str) {
+                println!("Success");
+                Ok(())
+            } else {
+                eprintln!("Failed to put custom price");
+                Err("Fail".into())
+            }
         },
         _ => {
             Err("Missing subcommand".into())
@@ -118,7 +116,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }   
 }
 
-fn find_custom_investment_id(creds: &State, name: &str) -> Option<u32> {
+fn find_custom_investment_id(creds: &State, code: &str) -> Option<u32> {
+    let custom_investments = get_custom_investments(&creds);
+    for ci in custom_investments {
+        if ci.code == code {
+            return Some(ci.id)
+        }
+    }
     None   
 }
 
@@ -130,7 +134,7 @@ struct CustomInvestments {
 #[derive(Deserialize, Debug)]
 struct CustomInvestment {
     code: String,
-    market_code: String,
+    // market_code: String,
     name: String,
     id: u32,
 }
@@ -174,14 +178,14 @@ fn get_custom_investments(creds: &State) -> Vec<CustomInvestment> {
     h.custom_investments
 }
 
-fn add_custom_investment_price(creds: &State, ci: &CustomInvestment, price: f64, date: String) -> bool {
-    println!("Setting custom investment price for {} to {} @ {}", ci.name, price, date);
+fn add_custom_investment_price(creds: &State, investment_id: u32, price: f64, date: &str) -> bool {
+    // println!("Setting custom investment price for {} to {} @ {}", ci.name, price, date);
     let mut body: HashMap::<String, serde_json::Value> = HashMap::new();
     body.insert("last_traded_on".into(), json!(date));
     body.insert("last_traded_price".into(), json!(price));
 
     // let url = format!("http://localhost:9999/api/v3/prices/{}.json", ci.id);
-    let url = format!("https://api.sharesight.com/api/v3/custom_investment/{}/prices.json", ci.id);
+    let url = format!("https://api.sharesight.com/api/v3/custom_investment/{}/prices.json", investment_id);
     // println!("url = {} body = {:?}", url, body);
     let r = creds.client.as_ref().unwrap().post(url).json(&body).send().unwrap();
     r.status().is_success()
