@@ -2,13 +2,19 @@ use std::collections::HashMap;
 use std::env;
 use std::option::Option;
 use std::process;
+use std::error::Error;
+
 use reqwest::blocking::Client;
 use reqwest::header;
+
 use serde::Deserialize;
+
 use serde_json;
 use serde_json::json;
+
 use chrono::{prelude::*, Duration};
 
+use clap::{arg, App, Arg, AppSettings};
 
 
 #[derive(Debug)]
@@ -30,6 +36,32 @@ struct AuthResponse {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 
+    let args = App::new("sharesight")
+        .about("Custom price updater for sharesight portfolios")
+        .setting(AppSettings::SubcommandRequiredElseHelp)
+        .subcommand(
+            App::new("list")
+            .about("Lists custom investments, showing their name and IDs")
+        )
+        .subcommand(
+            App::new("update")
+                .about("Adds a new price at a specific date for the given investment")
+                .arg(arg!(<investment> "The custom investment code, or internal sharesight ID if you pass --use-id"))
+                .arg(arg!(<date> "The date, formatted like YYYY-MM-DD"))
+                .arg(arg!(<price> "The price at this date"))
+                .arg(
+                    Arg::new("use-id")
+                        .long("use-id")
+                        .required(false)
+                        .help("Identify the investment using the internal sharesight ID, not your custom code")
+                    )
+                .setting(AppSettings::ArgRequiredElseHelp)
+        )
+        .get_matches()
+        ;
+
+    println!("{:?}", args);
+
     let mut creds = State {
         client_id: env::var("CLIENT_ID").expect("Missing 'CLIENT_ID' env var"),
         client_secret: env::var("CLIENT_SECRET").expect("Missing 'CLIENT_SECRET' env var"),
@@ -42,22 +74,52 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         process::exit(1);
     }
 
-    let custom_investments = get_custom_investments(&creds);
-    
-    println!("custom_investments = #{:?}", custom_investments);
+    match args.subcommand() {
+        Some(("list", sub_m)) => {
+            let custom_investments = get_custom_investments(&creds);
+            // println!("id\tcode\tname");
+            for ci in custom_investments {
+                println!("{}\t{}\t{}", ci.id, ci.code, ci.name);
+            }
+            Ok(())
+        },
+        Some(("update", sub_m)) => {
+            println!("sub_m = {:?}", sub_m);
+            // use ID lets us know the user supplied the internal sharesight custom investment id themselves
+            let investment_id: u32 = if sub_m.is_present("use-id") {
+                sub_m.value_of("investment").unwrap().parse::<u32>().unwrap()
+            } else {
+                if Some(id) = find_custom_investment_id(sub_m.value_of(&creds, "investment")) {
+                    id
+                } else {
+                    // Err("Can't find investment id for: '{}'", sub_m.value_of("investment"))
+                    0
+                }
+            };
+            println!("inv {:?}", investment_id);
 
-    let (date, price) = get_vanguard_global_small_cap_index_fund_price();
+            // let (date, price) = get_vanguard_global_small_cap_index_fund_price();
+            // let custom_investments = get_custom_investments(&creds);
+            // assert_eq!(1, custom_investments.len());
+        
+            // let ci = &custom_investments[0];
+            // if add_custom_investment_price(&creds, ci, price.into(), date) {
+            //     println!("Success");
+            //     Ok(())
+            // } else {
+            //     eprintln!("Failed to put custom price");
+            //     Err("Fail".into())
+            // }
+            Ok(())
+        },
+        _ => {
+            Err("Missing subcommand".into())
+        }
+    }   
+}
 
-    assert_eq!(1, custom_investments.len());
-    
-    let ci = &custom_investments[0];
-    if add_custom_investment_price(&creds, ci, price.into(), date) {
-        println!("Success");
-        Ok(())
-    } else {
-        eprintln!("Failed to put custom price");
-        Err("Fail".into())
-    }
+fn find_custom_investment_id(creds: &State, name: &str) -> Option<u32> {
+    None   
 }
 
 #[derive(Deserialize, Debug)]
