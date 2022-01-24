@@ -56,6 +56,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     )
                 .setting(AppSettings::ArgRequiredElseHelp)
         )
+        .subcommand(
+            App::new("scrape")
+            .about("Try and scrape the price of a fund/whatever from the web, or list available sources.")
+            .arg(arg!(<code> "The code of a scrapeable price, taken from the `scrape --list` command").conflicts_with("list"))
+            .arg(
+                Arg::new("list")
+                .long("list")
+                .required(false)
+                .help("List the funds/investments it is possible to scrape the price for")
+            )
+        )
         .get_matches()
         ;
 
@@ -74,6 +85,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     match args.subcommand() {
+        Some(("scrape", sub_m)) => {
+            if sub_m.is_present("list") {
+                println!("IE00B3X1NT05\tVanguard Global Small-Cap Index Fund");
+                Ok(())
+            } else {
+                // println!("SCRAPE {:?}", sub_m);
+                let code = sub_m.value_of("code").expect("missing code");
+                if code != "IE00B3X1NT05" {
+                    panic!("Invalid scraping code");
+                }
+                let (date, price) = get_vanguard_global_small_cap_index_fund_price();
+                println!("{code}\t{date}\t{price}");
+                Ok(())
+            }
+        },
         Some(("list", _sub_m)) => {
             let custom_investments = get_custom_investments(&creds);
             // println!("id\tcode\tname");
@@ -162,7 +188,7 @@ fn get_vanguard_global_small_cap_index_fund_price() -> (String, f64) {
     let hp = &prices[0];
     let mut date = hp.date.clone();
     date.truncate(10);
-    println!("Vanguard small-cap price {} = {}", date, hp.price);
+    // println!("Vanguard small-cap price {} = {}", date, hp.price);
     (date, hp.price)
 }
 
