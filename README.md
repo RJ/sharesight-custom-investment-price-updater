@@ -7,6 +7,12 @@ Command-line tool to add price data for custom investments that aren't supported
 * Written in rust.
 
 
+# Installation
+
+* Install rust, and compile this project with `cargo build`.
+* To run directly from this directory, use `cargo run` in place of the `sharesight` command in the below examples
+
+
 ## Usage
 
 ```
